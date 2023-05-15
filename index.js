@@ -1,39 +1,69 @@
-/** @format */
-
-var express = require("express");
-var app = express();
-var expressWs = require("express-ws")(app);
+const express = require("express");
+const app = express();
+const expressWs = require("express-ws")(app);
 const cors = require("cors");
 const bodyParser = require("body-parser");
-const crypto = require("crypto"); 
+const crypto = require("crypto");
 
 app.use(cors());
 app.use(bodyParser.json());
 
 app.use((req, res, next) => {
-  console.log("middleware");
+  // console.log("middleware");
   req.testing = "testing";
   return next();
 });
 
-// INDEX IF YOU CALL IT WITHOUT WEB SOCKET LIKE INDEX.HTML
 app.get("/", (req, res, next) => {
   res.json({ key: GenerateKey() });
 });
 
-const clients = [];
+const clients = {};
+const generatedKeys = [];
 
-// Create a connexion between the
 app.ws("/:key", function (ws, req) {
   const key = req.params.key;
-  clients[key] = ws;
-  console.log(clients);
-  console.log("socket", req.testing);
 
+  if (!generatedKeys.includes(key)) {
+    ws.send(JSON.stringify({ type: "error", message: "Invalid key" }));
+    ws.close();
+    return;
+  }
+
+  if (clients[key]) {
+    if (clients[key].length === 2) {
+      ws.send(JSON.stringify({ type: "error", message: "Too many connections for this key" }));
+      ws.close();
+      return;
+    }
+    ws.send(JSON.stringify({ type: "connected" }));
+    clients[key][0].send(JSON.stringify({ type: "connected" }));
+    clients[key].push(ws);
+    console.log(`Screen & Remote  with key ${key} Connected.`);
+  } else {
+    clients[key] = [ws];
+    console.log(`Screen with key ${key} Connected.`);
+  }
+
+
+  
   ws.on("close", function () {
     console.log(`Client with key ${key} disconnected.`);
-    delete clients[key];
+    if (clients[key]) {
+      for (let client of clients[key]) {
+        if (client !== ws) {
+          client.send(JSON.stringify({ type: "disconnected" }));
+          client.close();
+        }
+      }
+      delete clients[key];
+      const index = generatedKeys.indexOf(key);
+      if (index > -1) {
+        generatedKeys.splice(index, 1);
+      }
+    }
   });
+  
 
   ws.on("error", function (err) {
     console.error(`WebSocket error for client with key ${key}:`, err);
@@ -49,14 +79,8 @@ app.post("/api/send-message/:key", async function (req, res) {
     return res.status(404).json({ success: false, error: "Client not found" });
   }
 
-  if (clients[key].readyState !== 1) {
-    console.error(`WebSocket is not open for client with key ${key}`);
-    delete clients[key];
-    return res.status(500).json({ success: false, error: "WebSocket is not open" });
-  }
-
   try {
-    await sendMessageToClient(clients[key], message);
+    await Promise.all(clients[key].map(client => sendMessageToClient(client, message)));
     res.json({ success: true });
   } catch (error) {
     console.error(`Failed to send message to client with key ${key}:`, error);
@@ -77,32 +101,16 @@ const sendMessageToClient = (client, message) => {
 };
 
 const GenerateKey = () => {
-  // return `${getrandomInt(999999999)}${getrandomInt(999999999)}${getrandomInt(999999999)}`;
-  return crypto.randomBytes(16).toString("hex");
+  let key;
+  do {
+    key = crypto.randomBytes(3).toString("hex").toUpperCase();
+  } while (generatedKeys.includes(key));
+
+  generatedKeys.push(key);
+  return key;
 };
 
-const port = process.argv[2] || 8000;
+const port = process.argv[2] || 8080;
 app.listen(port, () => {
   console.log(`Server is listening on port ${port}`);
 });
-
-// app.listen(8000, () => {
-//   console.log("Server is listening on port 8000");
-// });
-// const getrandomInt = (max) => {
-//   return Math.floor(Math.random() * Math.floor(max));
-// };
-
-
-// React.useEffect(() => {
-//   const socket = new WebSocket("ws://localhost:8000");
-
-//   socket.addEventListener("message", function (event) {
-//     const message = event.data;
-//     setMessages([...messages, message]);
-//   });
-
-//   return () => {
-//     socket.close();
-//   };
-// }, [messages]);
