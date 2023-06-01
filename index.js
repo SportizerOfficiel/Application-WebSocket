@@ -109,7 +109,8 @@ const GenerateKey = () => {
   return key;
 };
 
-const port = process.argv[2] || 8080;
+const port = process.env.PORT || 8080;
+
 app.listen(port, () => {
   console.log(`Server is listening on port ${port}`);
 });
