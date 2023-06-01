@@ -72,15 +72,14 @@ app.ws("/:key", function (ws, req) {
 });
 
 app.post("/api/send-message/:key", async function (req, res) {
-  const { message } = req.body;
+  const { message,type } = req.body;
   const key = req.params.key;
-
-  if (!clients[key]) {
+  if (!clients[key] || !clients[key][0] || !clients[key][1]) {
     return res.status(404).json({ success: false, error: "Client not found" });
   }
 
   try {
-    await Promise.all(clients[key].map(client => sendMessageToClient(client, message)));
+    await sendMessageToClient(clients[key][0],type, message);
     res.json({ success: true });
   } catch (error) {
     console.error(`Failed to send message to client with key ${key}:`, error);
@@ -88,9 +87,9 @@ app.post("/api/send-message/:key", async function (req, res) {
   }
 });
 
-const sendMessageToClient = (client, message) => {
+const sendMessageToClient = (client,type, message) => {
   return new Promise((resolve, reject) => {
-    client.send(message, (error) => {
+    client.send(JSON.stringify({ type,message }), (error) => {
       if (error) {
         reject(error);
       } else {
