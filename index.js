@@ -69,6 +69,8 @@ app.ws("/:key", function (ws, req) {
     console.error(`WebSocket error for client with key ${key}:`, err);
     delete clients[key];
   });
+
+  
 });
 
 app.post("/api/send-message/:key", async function (req, res) {
@@ -86,6 +88,35 @@ app.post("/api/send-message/:key", async function (req, res) {
     res.status(500).json({ success: false, error: "Failed to send message" });
   }
 });
+
+app.post("/api/broadcast/:key", async function (req, res) {
+  const { message,type } = req.body;
+  const key = req.params.key;
+
+  try {
+    broadcastMessageToClients(key, type, message);
+    res.json({ success: true });
+  } catch (error) {
+    console.error(`Failed to send message to client with key ${key}:`, error);
+    res.status(500).json({ success: false, error: "Failed to send message" });
+  }
+});
+
+const broadcastMessageToClients = (key, type, message) => {
+  if (!clients[key] || clients[key].length === 0) {
+    console.log(`No clients found for key ${key}`);
+    return;
+  }
+
+  for (let client of clients[key]) {
+    client.send(JSON.stringify({ type, message }), (error) => {
+      if (error) {
+        console.error(`Failed to send message to client with key ${key}:`, error);
+      }
+    });
+  }
+};
+
 
 const sendMessageToClient = (client,type, message) => {
   return new Promise((resolve, reject) => {
